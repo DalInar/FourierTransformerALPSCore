@@ -46,6 +46,32 @@ alps::params read_parameters_from_sim_file(std::string sim_filename){
     return parms;
 }
 
+cluster_matsubara_realspace_gf transform_into_real_space(const double_cell_matsubara_kspace_gf& G, const ClusterTransformer * CT_ptr_) {
+    cluster_matsubara_realspace_gf G_rs(alps::gf::omega_r1_r2_sigma_gf(G.mesh1(), CT_ptr_->real_space_mesh(), CT_ptr_->real_space_mesh(), G.mesh4()));
+    G_rs.initialize();
+    for (alps::gf::momentum_index k(0); k<G.mesh2().extent(); k+=2) {
+        for (int q1=0; q1<2; ++q1) {
+            for (int q2=0; q2<2; ++q2) {
+                for (alps::gf::real_space_index i(0); i<G_rs.mesh2().extent(); ++i) {
+                    for (alps::gf::real_space_index j(0); j<G_rs.mesh3().extent(); ++j) {
+                        double phase = 0.;
+                        for (unsigned int d=0; d<CT_ptr_->dimension(); ++d){
+                            phase += CT_ptr_->cluster_momentum(k()+q1,d)*CT_ptr_->cluster_coordinate(i(),d)-CT_ptr_->cluster_momentum(k()+q2,d)*CT_ptr_->cluster_coordinate(j(),d);
+                        }
+                        for (alps::gf::matsubara_index t(0); t<G.mesh1().extent(); ++t) {
+                            for (alps::gf::index spin(0); spin<G.mesh4().extent(); ++spin) {
+                                std::complex <double> phase_factor = (cos(phase), sin(phase));
+                                G_rs(t,i,j,spin)+=G(t, k+q1, alps::gf::index(q2), spin)*(phase_factor/double(G_rs.mesh2().extent()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return G_rs;
+}
+
 int main(int argc, char** argv){
 	std::cout<<"I WILL TRANSFORM YOU!!"<<std::endl;
 	std::cout<<"Right now we only transform from Matsubara k-space to Matsubara real space for Charge Order case"<<std::endl;
@@ -86,50 +112,52 @@ int main(int argc, char** argv){
     int n_matsubara = params["NMATSUBARA"];
     int n_tau = params["N"];
     int n_tau_plus_one = 1 + n_tau;
-    std::cout<< "N_mats = "<<n_matsubara<<std::endl;
+//    std::cout<< "N_mats = "<<n_matsubara<<std::endl;
     double_cell_matsubara_kspace_gf green0_matsubara_kspace_doublecell(
             alps::gf::omega_k_sigma1_sigma2_gf(alps::gf::matsubara_positive_mesh(beta, n_matsubara),
                     CT_ptr_->momentum_mesh(), alps::gf::index_mesh(2),
                     alps::gf::index_mesh(2)));
 
     std::cout<<"Loading G0"<<std::endl;
-    std::cout<<green0_matsubara_kspace_doublecell.mesh1().extent()<<std::endl;
-    std::cout<<green0_matsubara_kspace_doublecell.mesh2().extent()<<std::endl;
-    std::cout<<green0_matsubara_kspace_doublecell.mesh3().extent()<<std::endl;
-    std::cout<<green0_matsubara_kspace_doublecell.mesh4().extent()<<std::endl;
+//    std::cout<<green0_matsubara_kspace_doublecell.mesh1().extent()<<std::endl;
+//    std::cout<<green0_matsubara_kspace_doublecell.mesh2().extent()<<std::endl;
+//    std::cout<<green0_matsubara_kspace_doublecell.mesh3().extent()<<std::endl;
+//    std::cout<<green0_matsubara_kspace_doublecell.mesh4().extent()<<std::endl;
     std::cout<<iar.get_filename()<<std::endl;
-    std::vector< std::string > attrs = iar.list_children("/G0");
-    std::cout << attrs.size() << std::endl;
-    for(int i = 0; i<attrs.size(); i++){
-        std::cout<<attrs[i]<<std::endl;
-    }
+//    std::vector< std::string > attrs = iar.list_children("/G0");
+//    std::cout << attrs.size() << std::endl;
+//    for(int i = 0; i<attrs.size(); i++){
+//        std::cout<<attrs[i]<<std::endl;
+//    }
 
     boost::multi_array<std::complex<double>,4> data;
     data.resize(boost::extents[512][8][2][2]);
     iar["/G0/data"] >> data;
-    std::cout<< data.shape()[0] << std::endl;
-    std::cout<< data.shape()[1] << std::endl;
-    std::cout<< data.shape()[2] << std::endl;
-    std::cout<< data.shape()[3] << std::endl;
-    std::cout<< data[0][0][0][0] <<std::endl;
-    //std::cout<<<<std::endl;
-
+//    std::cout<< data.shape()[0] << std::endl;
+//    std::cout<< data.shape()[1] << std::endl;
+//    std::cout<< data.shape()[2] << std::endl;
+//    std::cout<< data.shape()[3] << std::endl;
+//    std::cout<< data[0][0][0][0] <<std::endl;
 
     green0_matsubara_kspace_doublecell.load(iar,"/G0");
 
-    std::cout<<"Creating boxes"<<std::endl;
+    std::cout<<"Creating Containers"<<std::endl;
     double_cell_itime_kspace_gf green0_itime_kspace(alps::gf::itime_k_sigma1_sigma2_gf(alps::gf::itime_mesh(beta, 1 + n_tau), CT_ptr_->momentum_mesh(), alps::gf::index_mesh(2), alps::gf::index_mesh(2)));
     cluster_itime_realspace_gf green0_itime_sc_rs(alps::gf::itime_r1_r2_sigma_gf(alps::gf::itime_mesh(beta, n_tau_plus_one), CT_ptr_->real_space_mesh(), CT_ptr_->real_space_mesh(),alps::gf::index_mesh(2)));
+    cluster_matsubara_realspace_gf green0_omega_rs(alps::gf::omega_r1_r2_sigma_gf(green0_matsubara_kspace_doublecell.mesh1(), CT_ptr_->real_space_mesh(), CT_ptr_->real_space_mesh(), green0_matsubara_kspace_doublecell.mesh4()));
+
+    green0_omega_rs = transform_into_real_space(green0_matsubara_kspace_doublecell, CT_ptr_);
 
     alps::gf::fourier_frequency_to_time(green0_matsubara_kspace_doublecell, green0_itime_kspace);
 
     green0_itime_sc_rs = CT_ptr_->transform_into_real_space(green0_itime_kspace);
     alps::hdf5::archive g_tau_savefile("G0_tau_rs_output", "w");
     green0_itime_sc_rs.save(g_tau_savefile, "/G0");
-//    CT_ptr_((params["dca.AFM_SELFCONSISTENCY"].as<bool>() || params["dca.CO_SELFCONSISTENCY"].as<bool>()) ?
-//            (ClusterTransformer *) (new DoubleCellClusterTransformer(params))
-//                                                                                                          : (ClusterTransformer *) (new NormalStateClusterTransformer(
-//                    params))),
 
+    alps::hdf5::archive g_tau_kspace_savefile("G0_tau_ks_output", "w");
+    green0_itime_kspace.save(g_tau_kspace_savefile, "/G0");
+
+    alps::hdf5::archive g_omega_kspace_savefile("G0_omega_rs_output", "w");
+    green0_omega_rs.save(g_omega_kspace_savefile, "/G0");
 
 }
