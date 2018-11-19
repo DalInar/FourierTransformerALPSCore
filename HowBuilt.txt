@@ -1,0 +1,1 @@
+cmake -DALPSCore_DIR=/home/oryx/ALPSCore_Joe/install/share/ALPSCore/ -DDMFT_DIR=/home/oryx/ALPSCore_Joe/install/ -DCMAKE_INSTALL_PREFIX=/home/oryx/ALPSCore_Joe/install/ ..
